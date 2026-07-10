@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed shared SQLite OAuth credentials refreshing concurrently across processes by adding stale-safe ownership, canonical re-reads, and lease-fenced compare-and-set persistence/disable semantics.
+
 ## [16.3.15] - 2026-07-09
 
 ### Breaking Changes
