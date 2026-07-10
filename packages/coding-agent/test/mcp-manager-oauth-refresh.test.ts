@@ -1,13 +1,10 @@
 /**
- * Regression tests for MCP OAuth refresh failure handling (issue #1908).
+ * Regression tests for MCP OAuth refresh failure handling.
  *
- * Before the fix, a refresh that came back with `invalid_grant` was logged and
- * the stale access token was re-attached as `Authorization: Bearer …` on every
- * subsequent MCP request — producing a permanent 401 / reauth loop until the
- * user hand-cleared the row in `agent.db`. The fix routes definitive failures
- * (`invalid_grant`, `invalid_token`, `revoked`, plain 401/403 not classified as
- * transient) through `AuthStorage.remove(credentialId)` and suppresses the
- * Bearer injection, so the next request surfaces a clean auth error instead.
+ * Definitive failures (`invalid_grant`, `invalid_token`, revoked grants, and
+ * token-endpoint 401/403 responses) must disable only the exact credential
+ * revision that failed and suppress stale Bearer injection. Transient failures
+ * preserve the existing access token for one best-effort request.
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
@@ -84,7 +81,7 @@ describe("MCPManager OAuth refresh failure", () => {
 			undefined,
 			undefined,
 			"https://logfire.example.com/mcp",
-			{ authorizationUrl: undefined, stripSameOriginResource: true },
+			{ authorizationUrl: undefined, signal: expect.any(AbortSignal), stripSameOriginResource: true },
 		);
 		// The poisoned Bearer must not be re-injected — that is the loop the user
 		// reported (#1908).

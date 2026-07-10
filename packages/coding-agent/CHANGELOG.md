@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed concurrent OMP processes refreshing the same rotating MCP OAuth grant, which could replay retired refresh tokens and delete a winner's newly persisted credential.
+
 ## [16.3.15] - 2026-07-09
 
 ### Changed

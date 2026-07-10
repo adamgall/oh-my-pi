@@ -202,21 +202,22 @@ describe("per-profile MCP OAuth binding", () => {
 			"embedded-client",
 			"embedded-secret",
 			SERVER_URL,
-			{ authorizationUrl: undefined, stripSameOriginResource: true },
+			{ authorizationUrl: undefined, signal: expect.any(AbortSignal), stripSameOriginResource: true },
 		);
 		expect(authorizationHeader(prepared)).toBe("Bearer fresh-token");
 		// Embedded refresh material must survive rotation, or the *next* refresh
 		// of this definition-only binding would be impossible. The fallback
 		// resource (synthesized from config.url) is intentionally not persisted —
 		// it is re-derived from the definition on the next refresh.
-		expect(authStorage.get(URL_KEY_ID)).toMatchObject({
+		const persisted = authStorage.get(URL_KEY_ID) as oauthFlow.MCPStoredOAuthCredential;
+		expect(persisted).toMatchObject({
 			type: "oauth",
 			access: "fresh-token",
 			refresh: "fresh-refresh",
 			tokenUrl: "https://mcp.example.com/token",
 			clientId: "embedded-client",
-			resource: undefined,
 		});
+		expect(persisted.resource).toBeUndefined();
 	});
 
 	test("does not inject oauth for configs with explicit apikey auth", async () => {
@@ -315,7 +316,7 @@ describe("per-profile MCP OAuth binding", () => {
 			"my-dcr-client",
 			undefined,
 			SERVER_URL,
-			{ authorizationUrl: undefined, stripSameOriginResource: true },
+			{ authorizationUrl: undefined, signal: expect.any(AbortSignal), stripSameOriginResource: true },
 		);
 		expect(authorizationHeader(prepared)).toBe("Bearer fresh-token");
 	});

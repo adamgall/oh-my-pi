@@ -75,6 +75,48 @@ export interface MCPStoredOAuthCredential extends OAuthCredential {
 const DEFAULT_PORT = 3000;
 const CALLBACK_PATH = "/callback";
 
+const OAUTH_ERROR_DETAILS: Record<string, string> = {
+	access_denied: "access_denied",
+	invalid_client: "invalid_client",
+	invalid_grant: "invalid_grant",
+	invalid_request: "invalid_request",
+	invalid_scope: "invalid_scope",
+	invalid_token: "invalid_token",
+	rate_limited: "temporarily_unavailable",
+	server_error: "temporarily_unavailable",
+	slow_down: "temporarily_unavailable",
+	temporarily_unavailable: "temporarily_unavailable",
+	unauthorized_client: "unauthorized_client",
+	unsupported_grant_type: "unsupported_grant_type",
+};
+const OAUTH_TRANSIENT_RESPONSE_PATTERN =
+	/timeout|network|fetch failed|ECONN(?:REFUSED|RESET)|ETIMEDOUT|EAI_AGAIN|socket hang up|\b(?:408|425|429|5\d{2})\b|rate.?limit|too many requests|temporar|unavailable|forbidden|permission_denied|cloudflare|captcha/i;
+
+async function readOAuthErrorCode(response: Response): Promise<string | undefined> {
+	try {
+		const text = await response.text();
+		try {
+			const parsed = JSON.parse(text) as { error?: unknown };
+			if (typeof parsed.error === "string") {
+				const detail = OAUTH_ERROR_DETAILS[parsed.error];
+				if (detail) return detail;
+			}
+		} catch {
+			// Some OAuth servers return form-encoded or bare error codes.
+		}
+		const formCode = new URLSearchParams(text).get("error");
+		if (formCode) {
+			const detail = OAUTH_ERROR_DETAILS[formCode];
+			if (detail) return detail;
+		}
+		const bareDetail = OAUTH_ERROR_DETAILS[text.trim()];
+		if (bareDetail) return bareDetail;
+		return OAUTH_TRANSIENT_RESPONSE_PATTERN.test(text) ? "temporarily_unavailable" : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function hasOAuthScope(scopes: string | null | undefined, scope: string): boolean {
 	return !!scopes && scopes.split(/\s+/).includes(scope);
 }
@@ -715,6 +757,7 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
  */
 export interface RefreshMCPOAuthTokenOptions {
 	fetch?: FetchImpl;
+	signal?: AbortSignal;
 	/**
 	 * Authorization-server URL the original grant was minted against. Used to
 	 * filter same-origin resource indicators on refresh. Defaults to `tokenUrl`'s
@@ -766,11 +809,13 @@ export async function refreshMCPOAuthToken(
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
 		body: params.toString(),
+		signal: optsFromTrailing?.signal,
 	});
 
 	if (!response.ok) {
-		const text = await response.text();
-		throw new Error(`MCP OAuth refresh failed: ${response.status} ${text}`);
+		const errorCode = await readOAuthErrorCode(response);
+		const detail = errorCode ?? response.statusText;
+		throw new Error(`MCP OAuth refresh failed: ${response.status}${detail ? ` ${detail}` : ""}`);
 	}
 
 	const data = (await response.json()) as {
